@@ -15,6 +15,9 @@
 
   "content_scripts": [{
     "js": ["content.js"],
-    "matches": ["https://www.majestic.co.uk/wine"]
+    "matches": ["https://www.majestic.co.uk/wine*",
+                "https://www.laithwaites.co.uk/wines*",
+                "https://www.virginwines.co.uk/*"
+    ]
   }]
 }
