@@ -1,0 +1,23 @@
+{
+  "manifest_version": 2,
+
+  "name": "Vivino Ratings",
+  "version": "0.1.0",
+  "description": "Get Vivino Ratings for Majestic Wines",
+  "permissions": [
+    "https://www.vivino.com/search/wines"
+  ],
+
+  "background": {
+    "scripts": ["background.js"],
+    "persistent": false
+  },
+
+  "content_scripts": [{
+    "js": ["content.js"],
+    "matches": ["https://www.majestic.co.uk/wine*",
+                "https://www.laithwaites.co.uk/wines*",
+                "https://www.virginwines.co.uk/*"
+    ]
+  }]
+}
