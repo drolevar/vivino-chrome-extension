@@ -3,6 +3,7 @@ chrome.runtime.onMessage.addListener(
   function(request, sender, sendResponse) {
     if (request.contentScriptQuery == "queryWine") {
       var url = "https://www.vivino.com/search/wines?q=" + encodeURIComponent(request.wineName);
+      console.log("Querying %s...", request.wineName);
       fetch(url)
           .then(response => response.text())
           .then(responseText => parseVivinoRating(responseText))
@@ -21,16 +22,24 @@ function parseVivinoRating(html) {
   // Parse the text
   const document = parser.parseFromString(html, "text/html");
 
-  const averageContainersElements = document.getElementsByClassName('average__container');
-  for (var i = 0, l = averageContainersElements.length; i < l; i++) {
+  const wineCardElements = document.getElementsByClassName('wine-card__content');
+
+  for (var i = 0, l = wineCardElements.length; i < l; ++i) {
+    // Find wine link
+    const linkElements = wineCardElements[i].getElementsByClassName('link-color-alt-grey');
+
     // Find average rating
-    const ratingElements = averageContainersElements[i].getElementsByClassName('text-inline-block light average__number');
+    const ratingElements = wineCardElements[i].getElementsByClassName('text-inline-block light average__number');
 
     // Find number of reviews
-    const reviewCountElements = averageContainersElements[i].getElementsByClassName('text-inline-block average__stars');
+    const reviewCountElements = wineCardElements[i].getElementsByClassName('text-inline-block average__stars');
 
-    if (ratingElements.length > 0 && reviewCountElements.length > 0) {
-      const ratingStr = ratingElements[0].innerHTML.trim();
+    if (ratingElements.length > 0 && reviewCountElements.length > 0 && linkElements.length > 0) {
+      const link = linkElements[0];
+      const linkHref = 'https://www.vivino.com' + link.pathname;
+      const linkText = link.innerText.trim();
+
+      const ratingStr = ratingElements[0].innerHTML.trim().replace(',', '.');
       const rating = parseFloat(ratingStr);
       if (isNaN(rating)) continue;
 
@@ -38,10 +47,10 @@ function parseVivinoRating(html) {
       if (reviewCountStr.includes('ratings')) {
         const reviewCount = parseInt(reviewCountStr.slice(0, reviewCountStr.indexOf(' ')));
         if (isNaN(reviewCount)) continue;
-         return [rating, reviewCount];
+         return [rating, reviewCount, linkText, linkHref];
       }
     }  
   }
 
-  return [0.0, 0];
+  return [0.0, 0, '', ''];
 }
