@@ -28,13 +28,79 @@ chrome.runtime.onMessage.addListener(
 );
 
 // Parse the rating from the page returned by Vivino
-// Note: Service workers don't have access to DOMParser, so we use regex parsing
+// Note: Vivino now embeds data as JSON in a data-preloaded-state attribute
 function parseVivinoRating(html, wineName) {
   console.log("[Vivino Parser] Starting parse for: %s", wineName);
 
   // Log a sample of the HTML to see what we're working with
   const htmlSample = html.substring(0, 500);
   console.log("[Vivino Parser] HTML sample (first 500 chars): %s", htmlSample);
+
+  // Try to find the data-preloaded-state attribute
+  const preloadedStateMatch = html.match(/data-preloaded-state="([^"]+)"/);
+
+  if (!preloadedStateMatch) {
+    console.warn("[Vivino Parser] No data-preloaded-state attribute found");
+    console.log("[Vivino Parser] Falling back to legacy HTML parsing...");
+    return parseLegacyVivinoRating(html, wineName);
+  }
+
+  try {
+    // Unescape HTML entities in the JSON string
+    let jsonString = preloadedStateMatch[1];
+    jsonString = jsonString
+      .replace(/&quot;/g, '"')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&#x27;/g, "'")
+      .replace(/&#x2F;/g, '/');
+
+    console.log("[Vivino Parser] JSON string extracted (first 500 chars): %s", jsonString.substring(0, 500));
+
+    // Parse the JSON
+    const data = JSON.parse(jsonString);
+
+    if (!data.search_results || !data.search_results.matches || data.search_results.matches.length === 0) {
+      console.warn("[Vivino Parser] No search results found in JSON data");
+      return [0.0, 0, '', ''];
+    }
+
+    const matches = data.search_results.matches;
+    console.log("[Vivino Parser] Found %d wine matches in JSON", matches.length);
+
+    // Get the first match
+    const firstMatch = matches[0];
+    console.log("[Vivino Parser] First match: %o", firstMatch);
+
+    // Extract the required data
+    const vintage = firstMatch.vintage;
+    const wine = vintage.wine;
+
+    const wineNameResult = vintage.name || wine.name;
+    const rating = vintage.statistics?.ratings_average || 0;
+    const reviewCount = vintage.statistics?.ratings_count || 0;
+    const seoName = vintage.seo_name;
+    const wineId = wine.id;
+
+    // Construct the Vivino URL
+    const linkHref = `https://www.vivino.com/wines/${wineId}`;
+
+    console.log("[Vivino Parser] ✓ Successfully parsed: %s (%.1f stars, %d reviews)",
+      wineNameResult, rating, reviewCount);
+
+    return [rating, reviewCount, wineNameResult, linkHref];
+
+  } catch (error) {
+    console.error("[Vivino Parser] Error parsing JSON data: %s", error);
+    console.log("[Vivino Parser] Falling back to legacy HTML parsing...");
+    return parseLegacyVivinoRating(html, wineName);
+  }
+}
+
+// Legacy HTML parsing function (fallback for older Vivino pages)
+function parseLegacyVivinoRating(html, wineName) {
+  console.log("[Vivino Parser] Using legacy HTML parsing for: %s", wineName);
 
   // Try multiple patterns for wine cards
   const wineCardPatterns = [
