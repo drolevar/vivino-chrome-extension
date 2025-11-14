@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-This is a Chrome extension that retrieves wine ratings from [Vivino](https://www.vivino.com/) and displays them on various online wine retailer websites. The extension is lightweight, uses vanilla JavaScript (no frameworks or build tools), and operates as a Manifest V2 Chrome extension.
+This is a Chrome extension that retrieves wine ratings from [Vivino](https://www.vivino.com/) and displays them on various online wine retailer websites. The extension is lightweight, uses vanilla JavaScript (no frameworks or build tools), and operates as a Manifest V3 Chrome extension compatible with the latest Chrome versions.
 
 **Supported Wine Retailers:**
 - Majestic (UK) - https://www.majestic.co.uk/wine
@@ -10,19 +10,20 @@ This is a Chrome extension that retrieves wine ratings from [Vivino](https://www
 - Virgin Wines (UK) - https://www.virginwines.co.uk/browse
 - Vinmonopolet (Norway) - https://www.vinmonopolet.no
 
-**Current Version:** 0.0.2
+**Current Version:** 1.0.0
 
 ## Codebase Structure
 
 ```
 vivino-chrome-extension/
-├── manifest.json          # Chrome extension configuration (Manifest V2)
-├── background.js          # Background script for API calls to Vivino
+├── manifest.json          # Chrome extension configuration (Manifest V3)
+├── background.js          # Service worker for API calls to Vivino
 ├── content.js            # Content script injected into retailer pages
 ├── icon16.png            # Extension icon (16x16)
 ├── icon48.png            # Extension icon (48x48)
 ├── icon128.png           # Extension icon (128x128)
 ├── README.md             # User-facing documentation
+├── CLAUDE.md             # AI assistant guide (this file)
 ├── .gitignore            # Git ignore rules
 └── .gitattributes        # Git line-ending configuration
 ```
@@ -39,31 +40,32 @@ vivino-chrome-extension/
 ### manifest.json
 - **Purpose:** Chrome extension configuration
 - **Key Settings:**
-  - Manifest version: 2 (older format, may need migration to v3 in future)
-  - Permissions: Access to vivino.com search API
+  - Manifest version: 3 (latest Chrome standard)
+  - Host permissions: Access to vivino.com for cross-origin requests
   - Content scripts: Injected into retailer pages at document_idle
-  - Background scripts: Non-persistent event page
+  - Background service worker: Handles API communication with Vivino
   - Icons: Three sizes (16, 48, 128)
 
-### background.js (57 lines)
-- **Purpose:** Background event page handling API communication
+### background.js
+- **Purpose:** Service worker handling API communication with Vivino
 - **Key Functions:**
   - `chrome.runtime.onMessage.addListener()`: Listens for wine name queries from content scripts
-  - `parseVivinoRating(html)`: Parses Vivino search results page
+  - `parseVivinoRating(html)`: Parses Vivino search results page using regex
 
 - **How it works:**
   1. Receives wine name from content script
   2. Fetches Vivino search page via fetch API
-  3. Parses HTML using DOMParser
+  3. Parses HTML using regex patterns (service workers don't have access to DOMParser)
   4. Extracts rating, review count, wine name, and link from first matching wine card
   5. Returns data array: `[rating, reviewCount, linkText, linkHref]`
 
 - **Important Details:**
-  - Looks for elements with class `wine-card__content`
-  - Extracts rating from `text-inline-block light average__number`
-  - Extracts reviews from `text-inline-block average__stars`
+  - Uses regex to find elements with class `wine-card__content`
+  - Extracts rating from `text-inline-block light average__number` via regex
+  - Extracts reviews from `text-micro` elements containing "ratings" via regex
   - Returns `[0.0, 0, '', '']` if no match found
   - Replaces commas with periods in rating strings (handles European number format)
+  - **Service Worker Note:** Cannot use DOMParser as it's unavailable in service worker context
 
 ### content.js (152 lines)
 - **Purpose:** Content script injected into retailer pages
@@ -310,19 +312,19 @@ git push -u origin claude/claude-md-mhz1cg9m0kd0xna0-01SmtYsKNLGgmPCa474hs8yX
 
 ## Chrome Extension Specifics
 
-### Manifest V2 vs V3
-- **Current:** Manifest V2
-- **Future:** Chrome is deprecating V2 in favor of V3
-- **Migration Considerations:**
-  - Background scripts → Service workers
-  - `chrome.runtime.onMessage` patterns remain similar
-  - May need to adjust content security policy
-  - `fetch()` API should continue working
+### Manifest V3 (Current)
+- **Current:** Manifest V3 (as of version 1.0.0)
+- **Status:** Fully compatible with latest Chrome versions
+- **Key Features:**
+  - Service worker instead of background page
+  - `chrome.runtime.onMessage` patterns work the same
+  - `fetch()` API works perfectly in service workers
+  - **Important:** DOMParser not available in service workers - use regex/string parsing instead
 
 ### Permissions
-- **Current:** Only `https://www.vivino.com/search/wines`
+- **Host Permissions:** `https://www.vivino.com/*` for cross-origin fetch requests
 - **Minimal:** Good security practice - only request what's needed
-- **No host permissions:** Content scripts declared in manifest
+- **Content Scripts:** Declared in manifest, auto-injected on matching URLs
 
 ### Content Script Injection
 - **Timing:** `document_idle` (after DOM loaded but before window.onload)
@@ -354,11 +356,19 @@ git push -u origin claude/claude-md-mhz1cg9m0kd0xna0-01SmtYsKNLGgmPCa474hs8yX
 4. Test with various wine names
 
 ### Task: Update to Manifest V3
-1. Change `manifest_version` to 3
-2. Convert background.js to service worker
-3. Update content security policy
-4. Test message passing still works
-5. Update documentation
+**Status:** ✅ Completed in version 1.0.0
+
+The extension has been successfully migrated to Manifest V3:
+1. ✅ Changed `manifest_version` to 3
+2. ✅ Converted background.js to service worker (replaced DOMParser with regex)
+3. ✅ Updated permissions to use `host_permissions`
+4. ✅ Message passing works correctly
+5. ✅ Documentation updated
+
+**Key Changes Made:**
+- Replaced `background.scripts` with `background.service_worker`
+- Moved Vivino URL from `permissions` to `host_permissions`
+- Replaced DOMParser with regex-based HTML parsing (service workers don't support DOM APIs)
 
 ### Task: Add Features
 Common feature requests:
@@ -487,5 +497,5 @@ Common feature requests:
 ---
 
 **Last Updated:** 2025-11-14
-**Extension Version:** 0.0.2
-**Manifest Version:** 2
+**Extension Version:** 1.0.0
+**Manifest Version:** 3 (Chrome Latest Compatible)

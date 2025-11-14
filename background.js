@@ -15,41 +15,41 @@ chrome.runtime.onMessage.addListener(
 );
 
 // Parse the rating from the page returned by Vivino
+// Note: Service workers don't have access to DOMParser, so we use regex parsing
 function parseVivinoRating(html) {
-  // Initialize the DOM parser
-  const parser = new DOMParser();
+  // Extract wine cards from HTML
+  const wineCardRegex = /<div[^>]*class="[^"]*wine-card__content[^"]*"[^>]*>([\s\S]*?)<\/div>\s*<\/div>\s*<\/div>/g;
+  const cards = html.matchAll(wineCardRegex);
 
-  // Parse the text
-  const document = parser.parseFromString(html, "text/html");
+  for (const card of cards) {
+    const cardHtml = card[1];
 
-  const wineCardElements = document.getElementsByClassName('wine-card__content');
+    // Extract wine link and name
+    const linkRegex = /<a[^>]*class="[^"]*link-color-alt-grey[^"]*"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/;
+    const linkMatch = cardHtml.match(linkRegex);
 
-  for (var i = 0, l = wineCardElements.length; i < l; ++i) {
-    // Find wine link
-    const linkElements = wineCardElements[i].getElementsByClassName('link-color-alt-grey');
+    // Extract rating
+    const ratingRegex = /<div[^>]*class="[^"]*text-inline-block light average__number[^"]*"[^>]*>([\d,\.]+)<\/div>/;
+    const ratingMatch = cardHtml.match(ratingRegex);
 
-    // Find average rating
-    const ratingElements = wineCardElements[i].getElementsByClassName('text-inline-block light average__number');
+    // Extract review count
+    const reviewRegex = /<span[^>]*class="[^"]*text-micro[^"]*"[^>]*>([\d,]+)\s+ratings?<\/span>/;
+    const reviewMatch = cardHtml.match(reviewRegex);
 
-    // Find number of reviews
-    const reviewCountElements = wineCardElements[i].getElementsByClassName('text-inline-block average__stars');
+    if (linkMatch && ratingMatch && reviewMatch) {
+      const linkHref = 'https://www.vivino.com' + linkMatch[1];
+      const linkText = linkMatch[2].replace(/<[^>]*>/g, '').trim();
 
-    if (ratingElements.length > 0 && reviewCountElements.length > 0 && linkElements.length > 0) {
-      const link = linkElements[0];
-      const linkHref = 'https://www.vivino.com' + link.pathname;
-      const linkText = link.innerText.trim();
-
-      const ratingStr = ratingElements[0].innerHTML.trim().replace(',', '.');
+      const ratingStr = ratingMatch[1].trim().replace(',', '.');
       const rating = parseFloat(ratingStr);
       if (isNaN(rating)) continue;
 
-      const reviewCountStr = reviewCountElements[0].getElementsByClassName('text-micro')[0].innerHTML.trim(); 
-      if (reviewCountStr.includes('ratings')) {
-        const reviewCount = parseInt(reviewCountStr.slice(0, reviewCountStr.indexOf(' ')));
-        if (isNaN(reviewCount)) continue;
-         return [rating, reviewCount, linkText, linkHref];
-      }
-    }  
+      const reviewCountStr = reviewMatch[1].replace(/,/g, '');
+      const reviewCount = parseInt(reviewCountStr);
+      if (isNaN(reviewCount)) continue;
+
+      return [rating, reviewCount, linkText, linkHref];
+    }
   }
 
   return [0.0, 0, '', ''];
