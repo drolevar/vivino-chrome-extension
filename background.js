@@ -8,7 +8,10 @@ chrome.runtime.onMessage.addListener(
           .then(response => response.text())
           .then(responseText => parseVivinoRating(responseText))
           .then(ratingAndReviewCount => sendResponse(ratingAndReviewCount))
-          .catch(error => console.error("Error querying Vivino = " + error))
+          .catch(error => {
+            console.error("Error querying Vivino = " + error);
+            sendResponse([0.0, 0, '', '']); // Return empty result on error
+          });
       return true;
     }
   }
