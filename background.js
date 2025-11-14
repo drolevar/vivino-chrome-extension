@@ -20,7 +20,7 @@ chrome.runtime.onMessage.addListener(
           })
           .catch(error => {
             console.error("[Vivino] Error querying '%s': %s", request.wineName, error);
-            sendResponse([0.0, 0, '', '']); // Return empty result on error
+            sendResponse(['error', 0, '', '']); // Return error indicator
           });
       return true;
     }
