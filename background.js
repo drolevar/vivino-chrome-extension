@@ -1,11 +1,16 @@
 const CACHE_KEY = 'vivinoCache';
 const CACHE_TTL_MS = 1000 * 60 * 60 * 6; // 6 hours
 const MAX_CACHE_ENTRIES = 200;
+const ENABLE_KEY = 'vivinoEnabled';
 
 Object.assign(globalThis, {CACHE_KEY, CACHE_TTL_MS, MAX_CACHE_ENTRIES});
 
 const messageHandlers = {
   async queryWine(request) {
+    if (!isVivinoEnabled()) {
+      console.log("[Vivino] Disabled via toggle; skipping lookup for '%s'", request.wineName);
+      return ['error', 0, '', ''];
+    }
     return getRatingWithCacheAndFlight(request.wineName);
   }
 };
@@ -25,6 +30,44 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   return true; // keep message channel open for async response
 });
+
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.storage.local.get(ENABLE_KEY, result => {
+    if (typeof result[ENABLE_KEY] === 'undefined') {
+      chrome.storage.local.set({[ENABLE_KEY]: true});
+    }
+  });
+});
+
+let vivinoEnabled = true;
+chrome.storage.local.get(ENABLE_KEY, result => {
+  if (typeof result[ENABLE_KEY] === 'boolean') {
+    vivinoEnabled = result[ENABLE_KEY];
+  }
+  updateActionBadge();
+});
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes[ENABLE_KEY]) {
+    vivinoEnabled = !!changes[ENABLE_KEY].newValue;
+    updateActionBadge();
+  }
+});
+
+chrome.action.onClicked.addListener(() => {
+  vivinoEnabled = !vivinoEnabled;
+  chrome.storage.local.set({[ENABLE_KEY]: vivinoEnabled}, updateActionBadge);
+});
+
+function isVivinoEnabled() {
+  return vivinoEnabled !== false;
+}
+
+function updateActionBadge() {
+  if (!chrome.action || !chrome.action.setBadgeText) return;
+  chrome.action.setBadgeText({text: isVivinoEnabled() ? '' : 'OFF'});
+  chrome.action.setBadgeBackgroundColor({color: '#b00020'});
+}
 
 const inflightRequests = new Map();
 

@@ -10,6 +10,7 @@ const onReady = function (callback) {
 const VINMONO_NAME_CLASS = 'product__name';
 const PROCESSED_ATTR = 'vivinoProcessed';
 const ORIGINAL_NAME_ATTR = 'vivinoOriginalName';
+const ENABLE_KEY = 'vivinoEnabled';
 
 const vinmonopoletController = createVinmonopoletController();
 
@@ -32,6 +33,24 @@ onReady(() => {
 function createVinmonopoletController() {
   const sessionRatings = new Map();
   const inflight = new Map();
+  let enabled = true;
+
+  chrome.storage.local.get(ENABLE_KEY, result => {
+    if (typeof result[ENABLE_KEY] === 'boolean') {
+      enabled = result[ENABLE_KEY];
+    }
+  });
+
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && changes[ENABLE_KEY]) {
+      enabled = !!changes[ENABLE_KEY].newValue;
+      if (!enabled) {
+        this.reset();
+      } else {
+        debouncedProcess();
+      }
+    }
+  });
 
   return {
     reset() {
@@ -43,6 +62,10 @@ function createVinmonopoletController() {
     },
 
     async processPage() {
+      if (!enabled) {
+        console.log("[Vivino] Disabled; skipping page processing");
+        return;
+      }
       const wineElements = document.getElementsByClassName(VINMONO_NAME_CLASS);
       if (!wineElements.length) return;
 

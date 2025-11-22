@@ -6,16 +6,24 @@ const vm = require('vm');
 const backgroundPath = path.join(__dirname, '..', 'background.js');
 const backgroundCode = fs.readFileSync(backgroundPath, 'utf8');
 
-const sandbox = {
-  console,
-  fetch: () => { throw new Error('fetch should not be invoked during parser tests'); },
-  AbortController,
-  chrome: {
-    runtime: { onMessage: { addListener: () => {} } },
-    storage: {
-      local: (() => {
-        const store = {};
-        return {
+const sandbox = (() => {
+  const store = {};
+  return {
+    console,
+    fetch: () => { throw new Error('fetch should not be invoked during parser tests'); },
+    AbortController,
+    chrome: {
+      runtime: {
+        onMessage: { addListener: () => {} },
+        onInstalled: { addListener: () => {} }
+      },
+      action: {
+        setBadgeText: () => {},
+        setBadgeBackgroundColor: () => {},
+        onClicked: { addListener: () => {} }
+      },
+      storage: {
+        local: {
           get: (key, cb) => {
             if (Array.isArray(key)) {
               const result = {};
@@ -31,11 +39,12 @@ const sandbox = {
             Object.assign(store, entries);
             cb();
           }
-        };
-      })()
+        },
+        onChanged: { addListener: () => {} }
+      }
     }
-  }
-};
+  };
+})();
 
 vm.createContext(sandbox);
 vm.runInContext(backgroundCode, sandbox);
