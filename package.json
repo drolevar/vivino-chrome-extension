@@ -1,0 +1,12 @@
+{
+  "name": "vivino-chrome-extension",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": "node tests/vivinoParser.test.js",
+    "test:live": "cross-env LIVE_TESTS=1 node tests/live_vivino_integration.test.js"
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3"
+  }
+}

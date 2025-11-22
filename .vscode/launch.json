@@ -8,6 +8,17 @@
       "program": "${workspaceFolder}/tests/vivinoParser.test.js",
       "console": "integratedTerminal",
       "runtimeExecutable": "C:/Program Files/nodejs/node.exe"
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Run live parser test",
+      "program": "${workspaceFolder}/tests/live_vivino_integration.test.js",
+      "console": "integratedTerminal",
+      "runtimeExecutable": "C:/Program Files/nodejs/node.exe",
+      "env": {
+        "LIVE_TESTS": "1"
+      }
     }
   ]
 }
