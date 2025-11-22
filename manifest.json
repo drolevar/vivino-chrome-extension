@@ -3,7 +3,7 @@
 
   "name": "Vivino Wine Ratings",
   "version": "1.0.0",
-  "description": "Get Vivino Ratings for UK online wine shops (Majestic, Laithwaite's, Virgin Wines, Vinmonopolet)",
+  "description": "Get Vivino ratings for Vinmonopolet.no",
 
   "host_permissions": [
     "https://www.vivino.com/*"
@@ -23,9 +23,6 @@
     "js": ["content.js"],
     "run_at": "document_idle",
     "matches": [
-      "https://www.majestic.co.uk/wine*",
-      "https://www.laithwaites.co.uk/wines*",
-      "https://www.virginwines.co.uk/*",
       "https://www.vinmonopolet.no/*"
     ]
   }]
