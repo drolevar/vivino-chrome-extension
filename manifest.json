@@ -1,31 +1,32 @@
 {
-  "manifest_version": 2,
+  "manifest_version": 3,
 
   "name": "Vivino Wine Ratings",
-  "version": "0.0.2",
+  "version": "1.0.0",
   "description": "Get Vivino Ratings for UK online wine shops (Majestic, Laithwaite's, Virgin Wines, Vinmonopolet)",
-  "permissions": [
-    "https://www.vivino.com/search/wines"
+
+  "host_permissions": [
+    "https://www.vivino.com/*"
   ],
 
-  "icons": { 
+  "icons": {
     "16": "icon16.png",
     "48": "icon48.png",
-    "128": "icon128.png" 
+    "128": "icon128.png"
   },
 
   "background": {
-    "scripts": ["background.js"],
-    "persistent": false
+    "service_worker": "background.js"
   },
 
   "content_scripts": [{
     "js": ["content.js"],
     "run_at": "document_idle",
-    "matches": ["https://www.majestic.co.uk/wine*",
-                "https://www.laithwaites.co.uk/wines*",
-                "https://www.virginwines.co.uk/*",
-                "https://www.vinmonopolet.no/*"
+    "matches": [
+      "https://www.majestic.co.uk/wine*",
+      "https://www.laithwaites.co.uk/wines*",
+      "https://www.virginwines.co.uk/*",
+      "https://www.vinmonopolet.no/*"
     ]
   }]
 }

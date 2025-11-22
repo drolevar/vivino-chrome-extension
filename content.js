@@ -103,27 +103,42 @@ function insertVinmonopoletRating(wineNameElement) {
     chrome.runtime.sendMessage(
       {contentScriptQuery: "queryWine", wineName: wineName}, response => {
           if (response) {
-            let parentEl = wineNameElement.parentElement;
-            if (parentEl.tagName === 'A') {
-              let parparEl = parentEl.parentElement;
-              let aName = document.createElement('a');
-              aName.href = response[3];
-
-              parparEl.insertBefore(aName, parentEl.nextSibling);
-
-              let divName = document.createElement('div');
-              divName.className = 'product__district';
-              divName.innerText = response[2];
-
-              let divRating = document.createElement('div');
-              divRating.className = 'product__district';
-              divRating.innerText = '(Rating: ' + response[0] + ", Reviews: " + response[1] + ")";
-
-              aName.appendChild(divName);
-              aName.appendChild(divRating);
+            // Check if there was an error
+            if (response[0] === 'error') {
+              let parentEl = wineNameElement.parentElement;
+              if (parentEl.tagName === 'A') {
+                let parparEl = parentEl.parentElement;
+                let divError = document.createElement('div');
+                divError.className = 'product__district';
+                divError.innerHTML = '<span style="color: red;">failed</span>';
+                parparEl.insertBefore(divError, parentEl.nextSibling);
+              } else {
+                const wineName = wineNameElement.outerText;
+                wineNameElement.innerHTML = wineName + '<br><span style="color: red;">failed</span>';
+              }
             } else {
-              const wineName = wineNameElement.outerText;
-              wineNameElement.innerHTML = wineName + '<br>' + response[2] + '<br>(Rating: ' + response[0] + ", Reviews: " + response[1] + ")";
+              let parentEl = wineNameElement.parentElement;
+              if (parentEl.tagName === 'A') {
+                let parparEl = parentEl.parentElement;
+                let aName = document.createElement('a');
+                aName.href = response[3];
+
+                parparEl.insertBefore(aName, parentEl.nextSibling);
+
+                let divName = document.createElement('div');
+                divName.className = 'product__district';
+                divName.innerText = response[2];
+
+                let divRating = document.createElement('div');
+                divRating.className = 'product__district';
+                divRating.innerText = '(Rating: ' + response[0] + ", Reviews: " + response[1] + ")";
+
+                aName.appendChild(divName);
+                aName.appendChild(divRating);
+              } else {
+                const wineName = wineNameElement.outerText;
+                wineNameElement.innerHTML = wineName + '<br>' + response[2] + '<br>(Rating: ' + response[0] + ", Reviews: " + response[1] + ")";
+              }
             }
             resolve(response);
           } else {
@@ -141,7 +156,12 @@ function insertRating(wineNameElement) {
     chrome.runtime.sendMessage(
       {contentScriptQuery: "queryWine", wineName: wineName}, response => {
         if(response) {
-          wineNameElement.innerHTML = wineName + '<br>(Rating: ' + response[0] + ", Reviews: " + response[1] + ")";
+          // Check if there was an error
+          if (response[0] === 'error') {
+            wineNameElement.innerHTML = wineName + '<br><span style="color: red;">failed</span>';
+          } else {
+            wineNameElement.innerHTML = wineName + '<br>(Rating: ' + response[0] + ", Reviews: " + response[1] + ")";
+          }
           resolve(response)
         } else {
           reject('Encountered an error!');
