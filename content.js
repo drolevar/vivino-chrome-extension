@@ -7,165 +7,173 @@ const onReady = function (callback) {
   }
 };
 
+const VINMONO_NAME_CLASS = 'product__name';
+const PROCESSED_ATTR = 'vivinoProcessed';
+const ORIGINAL_NAME_ATTR = 'vivinoOriginalName';
+
+const vinmonopoletController = createVinmonopoletController();
+
 let lastUrl = location.href;
+const debouncedProcess = debounce(() => vinmonopoletController.processPage(), 250);
+
 new MutationObserver(() => {
   const url = location.href;
   if (url !== lastUrl) {
     lastUrl = url;
-    onUrlChange();
+    vinmonopoletController.reset();
+    debouncedProcess();
   }
-}).observe(document, {subtree: true, childList: true});
+}).observe(document.body || document.documentElement, {subtree: true, childList: true});
 
-function onUrlChange() {
-  console.log('URL changed!', location.href);
-  processUpdates(document.URL);
-}
-
-// Excecute any bandaid for the specific site, if the bandaids.js was loaded.
 onReady(() => {
-  if (typeof processUpdates === 'function') {
-    processUpdates(document.URL);
-  }
+  vinmonopoletController.processPage();
 });
 
-function processUpdates(url) {
-  if (url.includes('majestic')) { // YES
-    handleMajestic();
-  } else if (url.includes('laithwaites')) { // YES
-    handleLaithwaites();
-  } else if (url.includes('virginwines')) { // YES
-    handleVirginWines();
-  } else if (url.includes('vinmonopolet')) { // YES
-    handleVinmonopoletWines();
+function createVinmonopoletController() {
+  const sessionRatings = new Map();
+  const inflight = new Map();
+
+  return {
+    reset() {
+      sessionRatings.clear();
+      inflight.clear();
+      Array.from(document.getElementsByClassName(VINMONO_NAME_CLASS)).forEach(el => {
+        delete el.dataset[PROCESSED_ATTR];
+      });
+    },
+
+    async processPage() {
+      const wineElements = document.getElementsByClassName(VINMONO_NAME_CLASS);
+      if (!wineElements.length) return;
+
+      console.log("[Vivino] Processing %d wines... %s", wineElements.length, document.readyState);
+
+      for (const wineElement of wineElements) {
+        if (wineElement.dataset[PROCESSED_ATTR] === 'true') continue;
+
+        const rawName = wineElement.dataset[ORIGINAL_NAME_ATTR] || wineElement.textContent.trim();
+        const normalizedName = normalizeWineName(rawName);
+        wineElement.dataset[ORIGINAL_NAME_ATTR] = rawName;
+
+        try {
+          const response = await lookupRating(normalizedName, rawName);
+          if (!response) continue;
+
+          if (response[0] === 'error') {
+            renderError(wineElement, rawName);
+          } else {
+            renderRating(wineElement, rawName, response);
+          }
+          wineElement.dataset[PROCESSED_ATTR] = 'true';
+        } catch (error) {
+          console.error('[Vivino] Failed to render rating for %s: %s', rawName, error);
+          renderError(wineElement, rawName);
+          wineElement.dataset[PROCESSED_ATTR] = 'true';
+        }
+      }
+    }
+  };
+
+  function lookupRating(normalizedName, displayName) {
+    if (sessionRatings.has(normalizedName)) {
+      return Promise.resolve(sessionRatings.get(normalizedName));
+    }
+
+    if (inflight.has(normalizedName)) {
+      return inflight.get(normalizedName);
+    }
+
+    const pending = new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage({contentScriptQuery: "queryWine", wineName: displayName}, response => {
+        if (chrome.runtime.lastError) {
+          reject(chrome.runtime.lastError);
+          return;
+        }
+
+        if (response && response[0] !== 'error') {
+          sessionRatings.set(normalizedName, response);
+        }
+
+        resolve(response);
+      });
+    }).finally(() => inflight.delete(normalizedName));
+
+    inflight.set(normalizedName, pending);
+    return pending;
   }
 }
 
-function handleMajestic() {
-  // Find and iterate through all the wines listed on the page
-  const wineElements = document.getElementsByClassName('product-details__header');
-  for (var i = 0, l = wineElements.length; i < l; i++) {
-    insertRating(wineElements[i].getElementsByClassName('space-b--none')[0]);
+function debounce(fn, wait) {
+  let timeout = null;
+  return (...args) => {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => fn(...args), wait);
+  };
+}
+
+function normalizeWineName(name = '') {
+  return name.trim().toLowerCase();
+}
+
+function clearChildren(element) {
+  while (element.lastChild) {
+    element.removeChild(element.lastChild);
   }
 }
 
-function handleLaithwaites() {
-  // Find and iterate through all the wines listed on the page
-  const wineElements = document.getElementsByClassName('print-item');
-  for (var i = 0, l = wineElements.length; i < l; i++) {
-      insertRating(wineElements[i].getElementsByTagName('h3')[0]);
-  }
-}
-
-function handleVirginWines() {
-  // Find and iterate through all the wines listed on the page
-  const wineElements = document.getElementsByClassName('mb-0 text-sanchez font-weight-bold');
-  for (var i = 0, l = wineElements.length; i < l; i++) {
-    insertRating(wineElements[i]);
-  }
-}
-
-function handleVinmonopoletWines() {
-  // Find and iterate through all the wines listed on the page
-  const wineElements = document.getElementsByClassName('product__name');
-  console.log("Processing %d wines... %s", wineElements.length, document.readyState);
-  for (var i = 0, l = wineElements.length; i < l; i++) {
-    console.log("Processing %s...", wineElements[i].innerHTML.trim());
-    insertVinmonopoletRating(wineElements[i]);
-  }
-}
-
-function processResponse(wineNameElement, response) {
-  parentEl = wineNameElement.parentElement;
+function renderError(wineNameElement, wineName) {
+  const parentEl = wineNameElement.parentElement;
   if (parentEl.tagName === 'A') {
-    parparEl = parentEl.parentElement;
+    const parparEl = parentEl.parentElement;
+    const divError = document.createElement('div');
+    divError.className = 'product__district';
+    divError.textContent = 'Vivino lookup failed';
+    parparEl.insertBefore(divError, parentEl.nextSibling);
+  } else {
+    clearChildren(wineNameElement);
 
-    var aName = document.createElement('a');
+    const nameNode = document.createElement('div');
+    nameNode.textContent = wineName;
+    const errorNode = document.createElement('div');
+    errorNode.style.color = 'red';
+    errorNode.textContent = 'Vivino lookup failed';
+
+    wineNameElement.appendChild(nameNode);
+    wineNameElement.appendChild(errorNode);
+  }
+}
+
+function renderRating(wineNameElement, wineName, response) {
+  const parentEl = wineNameElement.parentElement;
+  if (parentEl.tagName === 'A') {
+    const parparEl = parentEl.parentElement;
+    const aName = document.createElement('a');
     aName.href = response[3];
 
     parparEl.insertBefore(aName, parentEl.nextSibling);
 
-    var divName = document.createElement('div');
-    divName.className = 'product__name';
-    divName.innerText = response[2] + '<br>(Rating: ' + response[0] + ", Reviews: " + response[1] + ")";
+    const divName = document.createElement('div');
+    divName.className = 'product__district';
+    divName.innerText = response[2];
+
+    const divRating = document.createElement('div');
+    divRating.className = 'product__district';
+    divRating.innerText = '(Rating: ' + response[0] + ", Reviews: " + response[1] + ")";
 
     aName.appendChild(divName);
+    aName.appendChild(divRating);
   } else {
-    const wineName = wineNameElement.outerText;
-    wineNameElement.innerHTML = wineName + '<br>' + response[2] + '<br>(Rating: ' + response[0] + ", Reviews: " + response[1] + ")";
+    clearChildren(wineNameElement);
+
+    const nameNode = document.createElement('div');
+    nameNode.textContent = wineName;
+    const vivinoNameNode = document.createElement('div');
+    vivinoNameNode.textContent = response[2];
+    const ratingNode = document.createElement('div');
+    ratingNode.textContent = '(Rating: ' + response[0] + ", Reviews: " + response[1] + ")";
+
+    wineNameElement.appendChild(nameNode);
+    wineNameElement.appendChild(vivinoNameNode);
+    wineNameElement.appendChild(ratingNode);
   }
-}
-
-// Retrieve the Vivino rating and update the wine name element
-function insertVinmonopoletRating(wineNameElement) {
-  const wineName = wineNameElement.outerText;
-
-  return new Promise((resolve, reject) => {
-    chrome.runtime.sendMessage(
-      {contentScriptQuery: "queryWine", wineName: wineName}, response => {
-          if (response) {
-            // Check if there was an error
-            if (response[0] === 'error') {
-              let parentEl = wineNameElement.parentElement;
-              if (parentEl.tagName === 'A') {
-                let parparEl = parentEl.parentElement;
-                let divError = document.createElement('div');
-                divError.className = 'product__district';
-                divError.innerHTML = '<span style="color: red;">failed</span>';
-                parparEl.insertBefore(divError, parentEl.nextSibling);
-              } else {
-                const wineName = wineNameElement.outerText;
-                wineNameElement.innerHTML = wineName + '<br><span style="color: red;">failed</span>';
-              }
-            } else {
-              let parentEl = wineNameElement.parentElement;
-              if (parentEl.tagName === 'A') {
-                let parparEl = parentEl.parentElement;
-                let aName = document.createElement('a');
-                aName.href = response[3];
-
-                parparEl.insertBefore(aName, parentEl.nextSibling);
-
-                let divName = document.createElement('div');
-                divName.className = 'product__district';
-                divName.innerText = response[2];
-
-                let divRating = document.createElement('div');
-                divRating.className = 'product__district';
-                divRating.innerText = '(Rating: ' + response[0] + ", Reviews: " + response[1] + ")";
-
-                aName.appendChild(divName);
-                aName.appendChild(divRating);
-              } else {
-                const wineName = wineNameElement.outerText;
-                wineNameElement.innerHTML = wineName + '<br>' + response[2] + '<br>(Rating: ' + response[0] + ", Reviews: " + response[1] + ")";
-              }
-            }
-            resolve(response);
-          } else {
-            reject('Encountered an error!');
-          }
-    });
-  });
-}
-
-// Retrieve the Vivino rating and update the wine name element
-function insertRating(wineNameElement) {
-  const wineName = wineNameElement.outerText;
-
-  return new Promise((resolve, reject) => {
-    chrome.runtime.sendMessage(
-      {contentScriptQuery: "queryWine", wineName: wineName}, response => {
-        if(response) {
-          // Check if there was an error
-          if (response[0] === 'error') {
-            wineNameElement.innerHTML = wineName + '<br><span style="color: red;">failed</span>';
-          } else {
-            wineNameElement.innerHTML = wineName + '<br>(Rating: ' + response[0] + ", Reviews: " + response[1] + ")";
-          }
-          resolve(response)
-        } else {
-          reject('Encountered an error!');
-        }
-    });
-  });
 }

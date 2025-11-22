@@ -1,31 +1,132 @@
-chrome.runtime.onMessage.addListener(
-  // Send request to Vivino to get rating
-  function(request, sender, sendResponse) {
-    if (request.contentScriptQuery == "queryWine") {
-      var url = "https://www.vivino.com/search/wines?q=" + encodeURIComponent(request.wineName);
-      console.log("[Vivino] Querying: %s", request.wineName);
-      console.log("[Vivino] URL: %s", url);
-      fetch(url)
-          .then(response => {
-            console.log("[Vivino] Response status: %d", response.status);
-            return response.text();
-          })
-          .then(responseText => {
-            console.log("[Vivino] Response size: %d bytes", responseText.length);
-            return parseVivinoRating(responseText, request.wineName);
-          })
-          .then(ratingAndReviewCount => {
-            console.log("[Vivino] Result for '%s': %o", request.wineName, ratingAndReviewCount);
-            sendResponse(ratingAndReviewCount);
-          })
-          .catch(error => {
-            console.error("[Vivino] Error querying '%s': %s", request.wineName, error);
-            sendResponse(['error', 0, '', '']); // Return error indicator
-          });
-      return true;
-    }
+const CACHE_KEY = 'vivinoCache';
+const CACHE_TTL_MS = 1000 * 60 * 60 * 6; // 6 hours
+const MAX_CACHE_ENTRIES = 200;
+
+Object.assign(globalThis, {CACHE_KEY, CACHE_TTL_MS, MAX_CACHE_ENTRIES});
+
+const messageHandlers = {
+  async queryWine(request) {
+    return getRatingWithCacheAndFlight(request.wineName);
   }
-);
+};
+
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  const handler = messageHandlers[request.contentScriptQuery];
+  if (!handler) {
+    return false;
+  }
+
+  handler(request)
+    .then(sendResponse)
+    .catch(error => {
+      console.error("[Vivino] Error handling '%s': %s", request.contentScriptQuery, error);
+      sendResponse(['error', 0, '', '']);
+    });
+
+  return true; // keep message channel open for async response
+});
+
+const inflightRequests = new Map();
+
+async function getRatingWithCacheAndFlight(rawName) {
+  const wineName = normalizeWineName(rawName);
+  const cached = await getCachedRating(wineName);
+  if (cached) {
+    console.log("[Vivino] Cache hit for '%s'", wineName);
+    return cached;
+  }
+
+  if (inflightRequests.has(wineName)) {
+    console.log("[Vivino] Pending request reused for '%s'", wineName);
+    return inflightRequests.get(wineName);
+  }
+
+  const pending = fetchRating(wineName).finally(() => inflightRequests.delete(wineName));
+  inflightRequests.set(wineName, pending);
+  return pending;
+}
+
+async function fetchRating(wineName) {
+  const url = "https://www.vivino.com/search/wines?q=" + encodeURIComponent(wineName);
+  console.log("[Vivino] Querying: %s", wineName);
+  console.log("[Vivino] URL: %s", url);
+  const response = await fetchWithTimeout(url, {}, 10000);
+  console.log("[Vivino] Response status: %d", response.status);
+  if (!response.ok) {
+    throw new Error(`Unexpected status ${response.status}`);
+  }
+  const responseText = await response.text();
+  console.log("[Vivino] Response size: %d bytes", responseText.length);
+  const ratingAndReviewCount = await parseVivinoRating(responseText, wineName);
+  console.log("[Vivino] Result for '%s': %o", wineName, ratingAndReviewCount);
+  await setCachedRating(wineName, ratingAndReviewCount);
+  return ratingAndReviewCount;
+}
+
+function fetchWithTimeout(url, options = {}, timeoutMs = 10000) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const request = fetch(url, {...options, signal: controller.signal});
+
+  return request.finally(() => clearTimeout(timeout));
+}
+
+function normalizeWineName(name = '') {
+  return name.trim().toLowerCase();
+}
+
+function getCachedRating(wineName) {
+  const key = normalizeWineName(wineName);
+  return new Promise(resolve => {
+    chrome.storage.local.get(CACHE_KEY, result => {
+      const {cache, dirty} = sanitizeCache(result[CACHE_KEY] || {});
+      if (dirty) {
+        chrome.storage.local.set({[CACHE_KEY]: cache});
+      }
+
+      const entry = cache[key];
+      resolve(entry ? entry.data : null);
+    });
+  });
+}
+
+function setCachedRating(wineName, data) {
+  const key = normalizeWineName(wineName);
+  return new Promise(resolve => {
+    chrome.storage.local.get(CACHE_KEY, result => {
+      const {cache} = sanitizeCache(result[CACHE_KEY] || {});
+      const mergedEntries = Object.entries(cache)
+        .concat([[key, {data, timestamp: Date.now()}]])
+        .sort(([, a], [, b]) => (b.timestamp || 0) - (a.timestamp || 0))
+        .slice(0, MAX_CACHE_ENTRIES);
+
+      chrome.storage.local.set({[CACHE_KEY]: Object.fromEntries(mergedEntries)}, resolve);
+    });
+  });
+}
+
+function sanitizeCache(cache) {
+  const now = Date.now();
+  const pruned = {};
+  let dirty = false;
+
+  Object.entries(cache).forEach(([name, entry]) => {
+    if (!entry || typeof entry.timestamp !== 'number') {
+      dirty = true;
+      return;
+    }
+
+    if ((now - entry.timestamp) >= CACHE_TTL_MS) {
+      dirty = true;
+      return;
+    }
+
+    pruned[name] = entry;
+  });
+
+  return {cache: pruned, dirty};
+}
+
 
 // Parse the rating from the page returned by Vivino
 // Note: Vivino now embeds data as JSON in a data-preloaded-state attribute
