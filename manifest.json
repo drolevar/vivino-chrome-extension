@@ -5,6 +5,10 @@
   "version": "1.0.0",
   "description": "Get Vivino ratings for Vinmonopolet.no",
 
+  "permissions": [
+    "storage"
+  ],
+
   "host_permissions": [
     "https://www.vivino.com/*"
   ],

@@ -11,11 +11,7 @@ const sandbox = {
   fetch: () => { throw new Error('fetch should not be invoked during parser tests'); },
   AbortController,
   chrome: {
-    runtime: {
-      onMessage: {
-        addListener: () => {}
-      }
-    },
+    runtime: { onMessage: { addListener: () => {} } },
     storage: {
       local: (() => {
         const store = {};
@@ -44,48 +40,21 @@ const sandbox = {
 vm.createContext(sandbox);
 vm.runInContext(backgroundCode, sandbox);
 
-const {parseVivinoRating, parseLegacyVivinoRating, getCachedRating, setCachedRating, CACHE_KEY, CACHE_TTL_MS, MAX_CACHE_ENTRIES} = sandbox;
+const {parseVivinoRating, getCachedRating, setCachedRating, CACHE_KEY, CACHE_TTL_MS, MAX_CACHE_ENTRIES} = sandbox;
 
-function htmlEscape(str) {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/"/g, '&quot;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/'/g, '&#x27;')
-    .replace(/\//g, '&#x2F;');
-}
+const dataDir = path.join(__dirname, 'data');
+const load = filename => fs.readFileSync(path.join(dataDir, filename), 'utf8');
 
-const preloadedState = {
-  search_results: {
-    matches: [
-      {
-        vintage: {
-          name: 'Test Wine 2020',
-          seo_name: 'test-wine-2020',
-          wine: {id: 555},
-          statistics: {ratings_average: 4.3, ratings_count: 245}
-        }
-      }
-    ]
-  }
-};
+// Vivino fixture (real response HTML extracted from HAR)
+const vivinoHtml = load('vivino_search_tyrells_old_winery_pinot_noir_2021.html');
+const vivinoParsed = Array.from(parseVivinoRating(vivinoHtml, "tyrrell's old winery pinot noir 2021"));
+assert.deepStrictEqual(vivinoParsed, [3.5, 97, "Tyrrell's Old Winery Pinot Noir 2021", 'https://www.vivino.com/wines/13524']);
 
-const encodedState = htmlEscape(JSON.stringify(preloadedState));
-const jsonHtml = `<div data-preloaded-state="${encodedState}"></div>`;
-
-const jsonResult = Array.from(parseVivinoRating(jsonHtml, 'Test Wine 2020'));
-assert.deepStrictEqual(jsonResult, [4.3, 245, 'Test Wine 2020', 'https://www.vivino.com/wines/555']);
-
-const legacyHtml = `
-<div class="wine-card__content">
-  <a class="link-color-alt-grey" href="/wines/123"><span>Sample Legacy</span></a>
-  <div class="text-inline-block light average__number">4.4</div>
-  <span class="text-micro">1,234 ratings</span>
-</div></div></div>`;
-
-const legacyResult = Array.from(parseLegacyVivinoRating(legacyHtml, 'Legacy Test'));
-assert.deepStrictEqual(legacyResult, [4.4, 1234, 'Sample Legacy', 'https://www.vivino.com/wines/123']);
+// Vinmonopolet fixture (JSON payload extracted from HAR)
+const vinJson = JSON.parse(load('vinmonopolet_search_rodvin_page0.json'));
+assert.strictEqual(vinJson.pagination.totalResults, 14580);
+assert.strictEqual(vinJson.products.length, 24);
+assert.strictEqual(vinJson.products[0].name, 'CARM Maria de Lourdes 2016');
 
 async function runCacheTests() {
   const cachedValue = [4.1, 55, 'Cache Hit Wine', 'https://www.vivino.com/wines/999'];
@@ -117,7 +86,7 @@ async function runCacheTests() {
 }
 
 runCacheTests()
-  .then(() => console.log('Parser and cache tests passed:', {jsonResult, legacyResult}))
+  .then(() => console.log('Parser tests passed:', {vivinoParsed}))
   .catch(error => {
     console.error('Tests failed', error);
     process.exit(1);
